@@ -29,12 +29,12 @@ enum ReminderType {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(uuid())
   email     String   @unique
   password  String
   role      UserRole
   createdAt DateTime @default(now())
-  isDemo      Boolean  @default(false)
+  isDemo    Boolean  @default(false)
 
   profile UserProfile?
   patient Patient?
@@ -44,8 +44,8 @@ model User {
 }
 
 model UserProfile {
-  id     Int     @id @default(autoincrement())
-  userId Int     @unique
+  id     String  @id @default(uuid())
+  userId String  @unique
   name   String
   phone  String?
   age    Int?
@@ -55,8 +55,8 @@ model UserProfile {
 }
 
 model Patient {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
+  id        String   @id @default(uuid())
+  userId    String   @unique
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -67,9 +67,9 @@ model Patient {
 }
 
 model Doctor {
-  id             Int      @id @default(autoincrement())
-  userId         Int      @unique
-  hospitalId     Int
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  hospitalId     String
   specialization String
   experience     Int
   licenseNumber  String   @unique
@@ -82,7 +82,7 @@ model Doctor {
 }
 
 model Hospital {
-  id        Int    @id @default(autoincrement())
+  id        String @id @default(uuid())
   name      String
   address   String
   latitude  Float?
@@ -92,9 +92,9 @@ model Hospital {
 }
 
 model Appointment {
-  id        Int               @id @default(autoincrement())
-  patientId Int
-  doctorId  Int
+  id        String            @id @default(uuid())
+  patientId String
+  doctorId  String
   dateTime  DateTime
   status    AppointmentStatus @default(SCHEDULED)
   createdAt DateTime          @default(now())
@@ -104,8 +104,8 @@ model Appointment {
 }
 
 model Reminder {
-  id        Int          @id @default(autoincrement())
-  userId    Int
+  id        String       @id @default(uuid())
+  userId    String
   type      ReminderType
   message   String
   remindAt  DateTime
@@ -115,8 +115,8 @@ model Reminder {
 }
 
 model HealthRecord {
-  id          Int      @id @default(autoincrement())
-  patientId   Int
+  id          String   @id @default(uuid())
+  patientId   String
   type        String // VISIT, LAB, PRESCRIPTION, NOTE
   title       String
   description String?
@@ -127,8 +127,8 @@ model HealthRecord {
 }
 
 model HealthSummary {
-  id        Int @id @default(autoincrement())
-  patientId Int @unique
+  id        String @id @default(uuid())
+  patientId String @unique
 
   bloodGroup String?
   heightCm   Int?
