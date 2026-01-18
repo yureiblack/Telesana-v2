@@ -5,10 +5,140 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReminderType {
+  APPOINTMENT
+  MEDICINE
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  profile UserProfile?
+  patient Patient?
+  doctor  Doctor?
+
+  reminders Reminder[]
+}
+
+model UserProfile {
+  id     Int     @id @default(autoincrement())
+  userId Int     @unique
+  name   String
+  phone  String?
+  age    Int?
+  gender String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Patient {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  healthRecords HealthRecord[]
+  healthSummary HealthSummary?
+  appointments  Appointment[]
+}
+
+model Doctor {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  hospitalId     Int
+  specialization String
+  experience     Int
+  licenseNumber  String   @unique
+  createdAt      DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id])
+
+  appointments Appointment[]
+}
+
+model Hospital {
+  id        Int    @id @default(autoincrement())
+  name      String
+  address   String
+  latitude  Float?
+  longitude Float?
+
+  doctors Doctor[]
+}
+
+model Appointment {
+  id        Int               @id @default(autoincrement())
+  patientId Int
+  doctorId  Int
+  dateTime  DateTime
+  status    AppointmentStatus @default(SCHEDULED)
+  createdAt DateTime          @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+model Reminder {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  type      ReminderType
+  message   String
+  remindAt  DateTime
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model HealthRecord {
+  id          Int      @id @default(autoincrement())
+  patientId   Int
+  type        String // VISIT, LAB, PRESCRIPTION, NOTE
+  title       String
+  description String?
+  createdBy   UserRole // DOCTOR or PATIENT
+  recordDate  DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model HealthSummary {
+  id        Int @id @default(autoincrement())
+  patientId Int @unique
+
+  bloodGroup String?
+  heightCm   Int?
+  weightKg   Float?
+
+  allergies       String?
+  chronicDiseases String?
+  ongoingMeds     String?
+
+  notes     String?
+  updatedAt DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 }

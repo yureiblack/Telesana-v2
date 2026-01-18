@@ -11,6 +11,11 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL"),
+    url: env("DATABASE_URL"), 
+    // @ts-ignore
+    adapter: {
+      type: "mysql",
+      url: env("DATABASE_URL"),
+    },
   },
 });
