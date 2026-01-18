@@ -18,7 +18,8 @@ There is **no admin role** for simplicity in this version.
 ### Core Design Principles
 - **Single User entity** for authentication and authorization
 - **Role-specific extensions** using Patient and Doctor tables
-- **Patient-centric health data ownership**
+- **Patient-centric ownership of medical data**
+- **Clear separation between health history and health summary**
 - **Normalized schema** to avoid duplication
 - **Strong referential integrity** using foreign keys and cascading deletes
 
@@ -60,13 +61,11 @@ Represents the **authentication identity** of every person using TeleSana.
 - Login and authentication
 - Role identification (Patient or Doctor)
 - Ownership of reminders
-- Participation in appointments
 
 **Key Relationships:**
 - One-to-one with `UserProfile`
 - One-to-one with `Patient` (if role = PATIENT)
 - One-to-one with `Doctor` (if role = DOCTOR)
-- One-to-many with `Appointment` (as patient or doctor)
 - One-to-many with `Reminder`
 
 ---
@@ -88,12 +87,15 @@ This entity is optional to support **progressive onboarding**, allowing users to
 Represents the **medical identity** of a user acting as a patient.
 
 **Responsibilities:**
-- Ownership of health records
-- Patient-specific healthcare data
+- Ownership of health records (medical history)
+- Ownership of a single health summary
+- Participation in appointments
 
 **Key Relationships:**
 - One-to-one with `User`
 - One-to-many with `HealthRecord`
+- One-to-one with `HealthSummary`
+- One-to-many with `Appointment`
 
 ---
 
@@ -114,7 +116,7 @@ Represents the **professional identity** of a user acting as a doctor.
 **Key Relationships:**
 - One-to-one with `User`
 - Many-to-one with `Hospital`
-- One-to-many with `Appointment`
+- One-to-many with `Appointment` 
 
 **Design Constraint:**  
 Each doctor works at **exactly one hospital**.
@@ -126,13 +128,14 @@ Each doctor works at **exactly one hospital**.
 Represents a physical healthcare facility.
 
 **Responsibilities:**
-- Stores hospital location data
-- Acts as a workplace for doctors
+- Stores hospital identity and address
+- Optionally stores GPS coordinates for future location-based features
 
 **Key Attributes:**
 - Name
 - Address
-- GPS coordinates (latitude, longitude)
+- Latitude (optional)
+- Longitude (optional)
 
 **Key Relationships:**
 - One-to-many with `Doctor`
@@ -148,30 +151,63 @@ Represents a scheduled consultation between a patient and a doctor.
 - Tracks appointment status
 
 **Key Relationships:**
-- Many-to-one with `User` (patient)
-- Many-to-one with `User` (doctor)
+- Many-to-one with `Patient`
+- Many-to-one with `Doctor`
 
 ---
 
-### 7. HealthRecord (Health Passbook Entry)
+### 7. HealthRecord (Health Passbook Entries)
 **Purpose:**  
-Represents an individual medical event in a patient’s health history.
+Represents **individual medical events** in a patient’s health history.
 
 **Examples:**
-- Doctor consultation summary
-- Diagnosis
-- Test result
-- OCR-extracted prescription
+- Doctor visit notes
+- Lab results
+- Prescriptions (manual or OCR-assisted)
+- General medical notes
 
 **Design Rationale:**  
-Health records are linked directly to `Patient` because **only patients own medical histories**.
+Health records are **append-only historical entries** and represent a chronological medical timeline.
+
+**Key Characteristics:**
+- Multiple records per patient
+- Created by either a doctor or a patient
+- Never overwritten
 
 **Key Relationships:**
 - Many-to-one with `Patient`
 
 ---
 
-### 8. Reminder
+### 8. HealthSummary
+**Purpose:**  
+Represents the **current medical snapshot** of a patient.
+
+**Examples:**
+- Blood group
+- Allergies
+- Chronic diseases
+- Ongoing medications
+- Height and weight
+- Important medical notes
+
+**Design Rationale:**  
+Unlike `HealthRecord`, the health summary:
+- Is **single per patient**
+- Is **continuously updated**
+- Acts as a **quick-reference medical overview**
+
+**Key Characteristics:**
+- One-to-one with `Patient`
+- Automatically tracks last update time (`updatedAt`)
+- Editable by doctors (and optionally patients)
+
+**Key Relationships:**
+- One-to-one with `Patient`
+
+---
+
+### 9. Reminder
 **Purpose:**  
 Stores **time-based notifications** for users.
 
@@ -180,7 +216,7 @@ Stores **time-based notifications** for users.
 - Medicine reminders
 
 **Design Rationale:**  
-Reminders are linked to `User` instead of roles because **both patients and doctors receive notifications**.
+Reminders are linked to `User` rather than roles because **both patients and doctors receive reminders**.
 
 **Key Relationships:**
 - Many-to-one with `User`
@@ -189,23 +225,25 @@ Reminders are linked to `User` instead of roles because **both patients and doct
 
 ## Referential Integrity & Deletion Strategy
 
-- Cascading deletes are used where child entities should not exist without their parent
+- Cascading deletes are used to maintain data integrity
 - Deleting a `User` automatically deletes:
   - UserProfile
   - Patient or Doctor record
-  - Health records (if patient)
+  - HealthRecords and HealthSummary (if patient)
+  - Appointments
   - Reminders
 
-This ensures **no orphaned records** remain in the database.
+This ensures **no orphaned medical or operational data** remains.
 
 ---
 
 ## Summary
 
 The TeleSana database design:
-- Separates authentication from domain logic
-- Models healthcare data accurately
-- Is optimized for a single-database backend
-- Supports future extensibility (admin role, multiple hospitals, labs)
+- Clearly separates **authentication**, **medical history**, and **medical summary**
+- Models healthcare data realistically
+- Is optimized for rapid development under tight timelines
+- Supports future extensibility (admin role, labs, OCR pipelines, multiple hospitals)
 
-This architecture balances **real-world correctness** with **development simplicity**, making it suitable for both academic evaluation and portfolio presentation.
+This architecture balances **real-world healthcare modeling** with **development simplicity**, making it suitable for both academic evaluation and portfolio presentation.
+
