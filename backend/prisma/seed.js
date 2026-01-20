@@ -1,5 +1,6 @@
+require('dotenv').config()
 const {PrismaClient, UserRole, ReminderType, AppointmentStatus, Gender, HealthRecordType, BloodGroup} = require('@prisma/client')
-
+const bcrypt = require("bcrypt")
 const prisma = new PrismaClient()
 
 async function seed(){
@@ -71,7 +72,7 @@ async function seed(){
         const user_doctor = await prisma.user.create({
             data: {
                 email: `demo.doctor${i + 1}@demo.telesana.com`,
-                password: "Demo@1234",
+                password: await bcrypt.hash("Demo@1234", 10),
                 role: UserRole.DOCTOR,
                 isDemo: true,
                 profile: {
@@ -104,7 +105,7 @@ async function seed(){
         const user_patient = await prisma.user.create({
             data: {
                 email: `demo.patient${i + 1}@demo.telesana.com`,
-                password: "Demo@1234",
+                password: await bcrypt.hash("Demo@1234", 10),
                 role: UserRole.PATIENT,
                 isDemo: true,
                 profile: {
@@ -186,10 +187,10 @@ async function seed(){
     for (const user of [...myPatients]){
         await prisma.reminder.create({
             data: {
-                    userId: user.id,
-                    type: ReminderType.MEDICINE,
-                    message: "Time to take your medicine~",
-                    remindAt: new Date(Date.now() + 6 * 60 * 60 * 1000)
+                userId: user.id,
+                type: ReminderType.MEDICINE,
+                message: "Time to take your medicine~",
+                remindAt: new Date(Date.now() + 6 * 60 * 60 * 1000)
             }
         })
     }
