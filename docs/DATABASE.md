@@ -3,39 +3,41 @@
 ## Overview
 
 TeleSana uses a **relational database design** built with **MySQL and Prisma ORM**.  
-The database follows a **role-based user model** and separates authentication, healthcare domain data, and operational data to ensure clarity, scalability, and correctness.
+The schema follows a **role-based healthcare model** supporting both **patients and doctors**, with a strong focus on medical correctness, reminder accuracy, and extensibility.
 
 The system supports two user roles:
 - **Patient**
 - **Doctor**
 
-There is **no admin role** for simplicity in this version.
+There is **no admin role** in this version.
 
 ---
 
-## Database Architecture
+## Core Design Principles
 
-### Core Design Principles
-- **Single User entity** for authentication and authorization
-- **Role-specific extensions** using Patient and Doctor tables
-- **Patient-centric ownership of medical data**
-- **Clear separation between health history and health summary**
-- **Normalized schema** to avoid duplication
-- **Strong referential integrity** using foreign keys and cascading deletes
+- **Single User entity** for authentication & authorization
+- **Role-specific extensions** using `Patient` and `Doctor`
+- **Patient-centric ownership** of medical data
+- **Clear separation** between:
+  - Medical history (HealthRecord)
+  - Current snapshot (HealthSummary)
+- **Normalized medicine & reminder scheduling**
+- **Explicit bidirectional relations** (Prisma-safe)
+- **Strong referential integrity** with cascading deletes
 
 ---
 
 ## Enums
 
 ### UserRole
-Defines the role of a user in the system.
+Defines the role of a user.
 - `PATIENT`
 - `DOCTOR`
 
 ---
 
 ### AppointmentStatus
-Tracks the lifecycle of an appointment.
+Tracks appointment lifecycle.
 - `SCHEDULED`
 - `COMPLETED`
 - `CANCELLED`
@@ -43,9 +45,44 @@ Tracks the lifecycle of an appointment.
 ---
 
 ### ReminderType
-Defines the purpose of a reminder.
+Defines reminder intent.
 - `APPOINTMENT`
 - `MEDICINE`
+
+---
+
+### HealthRecordType
+Defines the type of medical record.
+- `VISIT`
+- `LAB`
+- `PRESCRIPTION`
+- `NOTE`
+
+---
+
+### Gender
+User gender (inclusive).
+- `MALE`
+- `FEMALE`
+- `OTHER`
+- `PREFER_NOT_TO_SAY`
+
+---
+
+### BloodGroup
+Patient blood group.
+- `A_POS`, `A_NEG`
+- `B_POS`, `B_NEG`
+- `AB_POS`, `AB_NEG`
+- `O_POS`, `O_NEG`
+
+---
+
+### DayPeriod
+Defines medicine intake periods.
+- `MORNING`
+- `EVENING`
+- `NIGHT`
 
 ---
 
@@ -55,12 +92,12 @@ Defines the purpose of a reminder.
 
 ### 1. User
 **Purpose:**  
-Represents the **authentication identity** of every person using TeleSana.
+Represents the **authentication identity** of every system user.
 
 **Responsibilities:**
-- Login and authentication
-- Role identification (Patient or Doctor)
-- Ownership of reminders
+- Login & authentication
+- Role identification
+- Reminder ownership
 
 **Key Relationships:**
 - One-to-one with `UserProfile`
@@ -72,10 +109,10 @@ Represents the **authentication identity** of every person using TeleSana.
 
 ### 2. UserProfile
 **Purpose:**  
-Stores **personal information** shared across all user roles.
+Stores **personal information** shared across all roles.
 
 **Design Note:**  
-This entity is optional to support **progressive onboarding**, allowing users to complete their profile after account creation.
+Optional to support **progressive onboarding**.
 
 **Key Relationships:**
 - One-to-one with `User` (cascade delete)
@@ -84,58 +121,47 @@ This entity is optional to support **progressive onboarding**, allowing users to
 
 ### 3. Patient
 **Purpose:**  
-Represents the **medical identity** of a user acting as a patient.
+Represents the **medical identity** of a patient.
 
 **Responsibilities:**
-- Ownership of health records (medical history)
-- Ownership of a single health summary
-- Participation in appointments
+- Owns medical history and summary
+- Receives prescriptions
+- Participates in appointments
+- Owns medicine schedule slots
 
 **Key Relationships:**
 - One-to-one with `User`
 - One-to-many with `HealthRecord`
 - One-to-one with `HealthSummary`
 - One-to-many with `Appointment`
+- One-to-many with `Prescription`
+- One-to-many with `MedicineScheduleSlot`
 
 ---
 
 ### 4. Doctor
 **Purpose:**  
-Represents the **professional identity** of a user acting as a doctor.
+Represents the **professional identity** of a doctor.
 
 **Responsibilities:**
-- Providing consultations
-- Participating in appointments
-- Being associated with a hospital
-
-**Key Attributes:**
-- Specialization
-- Experience
-- License number (unique, mandatory)
+- Issues prescriptions
+- Conducts appointments
+- Works at a hospital
 
 **Key Relationships:**
 - One-to-one with `User`
 - Many-to-one with `Hospital`
-- One-to-many with `Appointment` 
-
-**Design Constraint:**  
-Each doctor works at **exactly one hospital**.
+- One-to-many with `Appointment`
+- One-to-many with `Prescription`
 
 ---
 
 ### 5. Hospital
 **Purpose:**  
-Represents a physical healthcare facility.
+Represents a healthcare facility.
 
 **Responsibilities:**
-- Stores hospital identity and address
-- Optionally stores GPS coordinates for future location-based features
-
-**Key Attributes:**
-- Name
-- Address
-- Latitude (optional)
-- Longitude (optional)
+- Stores hospital identity and location
 
 **Key Relationships:**
 - One-to-many with `Doctor`
@@ -144,34 +170,51 @@ Represents a physical healthcare facility.
 
 ### 6. Appointment
 **Purpose:**  
-Represents a scheduled consultation between a patient and a doctor.
+Represents a consultation between a patient and a doctor.
 
 **Responsibilities:**
 - Tracks appointment timing
-- Tracks appointment status
+- Tracks status
+- Acts as a source for appointment reminders
 
 **Key Relationships:**
 - Many-to-one with `Patient`
 - Many-to-one with `Doctor`
+- One-to-many with `Reminder`
 
 ---
 
-### 7. HealthRecord (Health Passbook Entries)
+### 7. Reminder
 **Purpose:**  
-Represents **individual medical events** in a patient’s health history.
+Stores **time-based notifications**.
 
 **Examples:**
-- Doctor visit notes
-- Lab results
-- Prescriptions (manual or OCR-assisted)
-- General medical notes
+- Appointment reminders (e.g., 1 hour before)
+- Medicine reminders (based on patient-defined time)
 
-**Design Rationale:**  
-Health records are **append-only historical entries** and represent a chronological medical timeline.
+**Design Rationale:**
+A unified reminder system for all reminder types.
 
-**Key Characteristics:**
-- Multiple records per patient
-- Created by either a doctor or a patient
+**Key Relationships:**
+- Many-to-one with `User`
+- Optional many-to-one with `Appointment`
+- Optional many-to-one with `MedicineScheduleSlot`
+
+---
+
+### 8. HealthRecord (Health Passbook)
+**Purpose:**  
+Represents **historical medical events**.
+
+**Examples:**
+- Doctor visits
+- Lab reports
+- Prescription records
+- Notes
+
+**Design Rationale:**
+- Append-only
+- Chronological medical timeline
 - Never overwritten
 
 **Key Relationships:**
@@ -179,71 +222,117 @@ Health records are **append-only historical entries** and represent a chronologi
 
 ---
 
-### 8. HealthSummary
+### 9. HealthSummary
 **Purpose:**  
 Represents the **current medical snapshot** of a patient.
 
 **Examples:**
 - Blood group
 - Allergies
-- Chronic diseases
+- Chronic conditions
 - Ongoing medications
-- Height and weight
-- Important medical notes
+- Height & weight
 
-**Design Rationale:**  
-Unlike `HealthRecord`, the health summary:
-- Is **single per patient**
-- Is **continuously updated**
-- Acts as a **quick-reference medical overview**
-
-**Key Characteristics:**
-- One-to-one with `Patient`
-- Automatically tracks last update time (`updatedAt`)
-- Editable by doctors (and optionally patients)
+**Design Rationale:**
+- Exactly one per patient
+- Continuously updated
+- Quick-reference medical overview
 
 **Key Relationships:**
 - One-to-one with `Patient`
 
 ---
 
-### 9. Reminder
+### 10. Prescription
 **Purpose:**  
-Stores **time-based notifications** for users.
+Represents a doctor-issued prescription.
 
-**Examples:**
-- Appointment reminders
-- Medicine reminders
-
-**Design Rationale:**  
-Reminders are linked to `User` rather than roles because **both patients and doctors receive reminders**.
+**Responsibilities:**
+- Groups prescribed medicines
+- Serves as a medical record
 
 **Key Relationships:**
-- Many-to-one with `User`
+- Many-to-one with `Patient`
+- Many-to-one with `Doctor`
+- One-to-many with `Medicine`
+
+---
+
+### 11. Medicine
+**Purpose:**  
+Represents a single medicine in a prescription.
+
+**Responsibilities:**
+- Stores medicine name & dosage
+- Defines intake periods
+
+**Key Relationships:**
+- Many-to-one with `Prescription`
+- One-to-many with `MedicineSchedule`
+
+---
+
+### 12. MedicineSchedule
+**Purpose:**  
+Defines **when** a medicine should be taken (period-based).
+
+**Examples:**
+- Morning
+- Evening
+- Night
+
+**Design Rationale:**
+Doctor-defined intake periods.
+
+**Key Relationships:**
+- Many-to-one with `Medicine`
+- One-to-many with `MedicineScheduleSlot`
+
+---
+
+### 13. MedicineScheduleSlot
+**Purpose:**  
+Represents the **exact time** a patient chooses to take medicine.
+
+**Examples:**
+- Morning → 10:00 AM
+- Evening → 5:00 PM
+- Night → 10:00 PM
+
+**Design Rationale:**
+- Patient-controlled timing
+- Multiple medicines can map to the same slot
+- Drives medicine reminders
+
+**Key Relationships:**
+- Many-to-one with `Patient`
+- Many-to-one with `MedicineSchedule`
+- One-to-many with `Reminder`
 
 ---
 
 ## Referential Integrity & Deletion Strategy
 
-- Cascading deletes are used to maintain data integrity
-- Deleting a `User` automatically deletes:
+- Cascading deletes ensure **no orphaned data**
+- Deleting a `User` deletes:
   - UserProfile
-  - Patient or Doctor record
-  - HealthRecords and HealthSummary (if patient)
+  - Patient or Doctor
   - Appointments
+  - Prescriptions
+  - Medicine schedules
   - Reminders
 
-This ensures **no orphaned medical or operational data** remains.
+This guarantees **data consistency and safety**.
 
 ---
 
 ## Summary
 
 The TeleSana database design:
-- Clearly separates **authentication**, **medical history**, and **medical summary**
-- Models healthcare data realistically
-- Is optimized for rapid development under tight timelines
-- Supports future extensibility (admin role, labs, OCR pipelines, multiple hospitals)
+- Accurately models real-world healthcare workflows
+- Supports precise appointment and medicine reminders
+- Separates historical vs current medical data
+- Is scalable, explicit, and Prisma-safe
+- Suitable for academic evaluation and production-ready demos
 
-This architecture balances **real-world healthcare modeling** with **development simplicity**, making it suitable for both academic evaluation and portfolio presentation.
-
+This schema balances **medical correctness**, **developer clarity**, and **future extensibility**, making it a strong foundation for TeleSana.
