@@ -10,7 +10,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -54,6 +54,12 @@ enum BloodGroup {
   O_NEG
 }
 
+enum DayPeriod {
+  MORNING
+  EVENING
+  NIGHT
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -66,7 +72,8 @@ model User {
   patient Patient?
   doctor  Doctor?
 
-  reminders Reminder[]
+  reminders     Reminder[]
+  healthRecords HealthRecord[] @relation("UserHealthRecords")
 }
 
 model UserProfile {
@@ -87,9 +94,11 @@ model Patient {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  healthRecords HealthRecord[]
-  healthSummary HealthSummary?
-  appointments  Appointment[]
+  healthRecords         HealthRecord[]
+  healthSummary         HealthSummary?
+  appointments          Appointment[]
+  prescriptions         Prescription[]
+  medicineScheduleSlots MedicineScheduleSlot[]
 }
 
 model Doctor {
@@ -104,16 +113,17 @@ model Doctor {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id])
 
-  appointments Appointment[]
+  appointments  Appointment[]
+  prescriptions Prescription[]
 }
 
 model Hospital {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   name      String
   address   String
   latitude  Float?
   longitude Float?
-  isDemo Boolean @default(false)
+  isDemo    Boolean @default(false)
 
   doctors Doctor[]
 }
@@ -128,29 +138,38 @@ model Appointment {
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  reminders Reminder[]
 }
 
 model Reminder {
-  id        String       @id @default(uuid())
-  userId    String
-  type      ReminderType
-  message   String
-  remindAt  DateTime
-  createdAt DateTime     @default(now())
+  id       String       @id @default(uuid())
+  userId   String
+  type     ReminderType
+  remindAt DateTime
+  message  String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  scheduleSlotId String?
+
+  createdAt DateTime @default(now())
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointment  Appointment?          @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  scheduleSlot MedicineScheduleSlot? @relation(fields: [scheduleSlotId], references: [id], onDelete: Cascade)
 }
 
 model HealthRecord {
-  id          String   @id @default(uuid())
-  patientId   String
-  type        HealthRecordType 
-  title       String
-  description String?
-  createdBy   UserRole 
-  recordDate  DateTime @default(now())
+  id              String           @id @default(uuid())
+  patientId       String
+  createdByUserId String
+  type            HealthRecordType
+  title           String
+  description     String?
+  recordDate      DateTime         @default(now())
 
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("UserHealthRecords", fields: [createdByUserId], references: [id], onDelete: Cascade)
 }
 
 model HealthSummary {
@@ -169,4 +188,56 @@ model HealthSummary {
   updatedAt DateTime @updatedAt
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Prescription {
+  id        String   @id @default(uuid())
+  patientId String
+  doctorId  String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  medicines Medicine[]
+}
+
+model Medicine {
+  id             String    @id @default(uuid())
+  prescriptionId String
+  name           String
+  dosage         String?
+  isActive       Boolean   @default(true)
+  discontinuedAt DateTime?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  schedules MedicineSchedule[]
+}
+
+model MedicineSchedule {
+  id         String    @id @default(uuid())
+  medicineId String
+  period     DayPeriod
+
+  medicine Medicine @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+
+  slots MedicineScheduleSlot[]
+}
+
+model MedicineScheduleSlot {
+  id         String   @id @default(uuid())
+  patientId  String
+  scheduleId String
+  time       DateTime
+
+  createdAt DateTime @default(now())
+
+  schedule MedicineSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  patient  Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  reminders Reminder[]
+
+  @@unique([patientId, scheduleId])
 }
