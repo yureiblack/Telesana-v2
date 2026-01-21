@@ -317,10 +317,17 @@ Represents the **exact time** a patient chooses to take medicine.
 - Deleting a `User` deletes:
   - UserProfile
   - Patient or Doctor
-  - Appointments
-  - Prescriptions
-  - Medicine schedules
-  - Reminders
+    - If Patient, also deletes:
+      - HealthRecord (medical history)
+      - HealthSummary (current snapshot)
+      - Appointments
+      - Prescriptions
+      - MedicineScheduleSlot & associated MedicineSchedule references
+      - Reminders
+    - If Doctor, also deletes:
+      - Appointments
+      - Prescriptions
+      - Reminders
 
 This guarantees **data consistency and safety**.
 
