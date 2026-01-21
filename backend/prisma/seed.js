@@ -1,5 +1,5 @@
 require('dotenv').config()
-const {PrismaClient, UserRole, ReminderType, AppointmentStatus, Gender, HealthRecordType, BloodGroup} = require('@prisma/client')
+const {PrismaClient, UserRole, ReminderType, AppointmentStatus, Gender, HealthRecordType, BloodGroup, DayPeriod} = require('@prisma/client')
 const bcrypt = require("bcrypt")
 const prisma = new PrismaClient()
 
@@ -40,25 +40,25 @@ async function seed(){
     //Doctors:
     const doctorProfiles = [
     {
-      name: "Dr. Ananya Sharma",
+      name: "Dr. Eva Heinemann",
       specialization: "General Physician",
       experience: 12,
       hospitalIndex: 0,
     },
     {
-      name: "Dr. Rohan Mehta",
+      name: "Dr. Johan Liebert",
       specialization: "Cardiologist",
       experience: 15,
       hospitalIndex: 0,
     },
     {
-      name: "Dr. Neha Iyer",
+      name: "Dr. Nina Fortner",
       specialization: "Dermatologist",
       experience: 8,
       hospitalIndex: 1,
     },
     {
-      name: "Dr. Arjun Rao",
+      name: "Dr. Kenzo Tenma",
       specialization: "Orthopedic",
       experience: 10,
       hospitalIndex: 1,
@@ -100,6 +100,7 @@ async function seed(){
 
     //Patients:
     const patients = []
+    const names = ["Eren Yeager", "Mikasa Ackerman", "Armin Arlert", "Annie Leonhart", "Erwin Smith", "Historia Reiss", "Levi Ackerman", "Sasha Braus", "Jean Kirstein", "Hange Zoë"]
 
     for (let i=0; i<10; i++){
         const user_patient = await prisma.user.create({
@@ -110,7 +111,7 @@ async function seed(){
                 isDemo: true,
                 profile: {
                     create: {
-                        name: `Patient ${i + 1}`,
+                        name: names[i],
                         age: 27 + i,
                         gender: i % 2 == 0 ? Gender.MALE : Gender.FEMALE
                     }
@@ -139,27 +140,74 @@ async function seed(){
             }
         })
 
-        // Health Record: 
+        // Health Record created by doctor: 
+        const assignedDoctor = doctors[i % doctors.length]
         await prisma.healthRecord.create({
             data: {
                 patientId: patient.id,
+                createdByUserId: assignedDoctor.user_doctor.id,
                 type: (i % 4) == 0 ? HealthRecordType.VISIT:
                       (i % 4) === 1 ? HealthRecordType.LAB:
                       (i % 4) === 2 ? HealthRecordType.PRESCRIPTION: HealthRecordType.NOTE,
                 title: "Initial Consultation",
                 description: "Routine demo consultation",
-                createdBy: UserRole.DOCTOR
             }
         })
+
+        // Prescription with Medicines:
+        const prescription = await prisma.prescription.create({
+            data: {
+                patientId: patient.id,
+                doctorId: assignedDoctor.doctor.id,
+                notes: "Demo Prescription",
+                medicines: {
+                    create: [
+                        { name: `Medicine A${i + 1}`, dosage: "1 pill", isActive: true },
+                        { name: `Medicine B${i + 1}`, dosage: "2 pills", isActive: true }
+                    ]
+                }
+            },
+            include: { medicines: true }
+        })
+
+        // Medicine Schedule & Slots
+        const periods = [DayPeriod.MORNING, DayPeriod.EVENING, DayPeriod.NIGHT]
+        for (const med of prescription.medicines) {
+            const schedule = await prisma.medicineSchedule.create({
+                data: {
+                    medicineId: med.id,
+                    period: periods[i % periods.length]
+                }
+            })
+
+            const slot = await prisma.medicineScheduleSlot.create({
+                data: {
+                    patientId: patient.id,
+                    scheduleId: schedule.id,
+                    time: new Date(Date.now() + 8 * 60 * 60 * 1000) // demo 8 hours later
+                }
+            })
+
+            // Medicine reminder
+            await prisma.reminder.create({
+                data: {
+                    userId: user_patient.id,
+                    type: ReminderType.MEDICINE,
+                    scheduleSlotId: slot.id,
+                    message: `Time to take ${med.name}`,
+                    remindAt: slot.time
+                }
+            })
+        }
 
         patients.push({ user_patient, patient })
     }
 
-    //Appointments:
-    for(let i=0; i<patients.length; i++){
+    // Appointments + Appointment Reminders
+    for (let i = 0; i < patients.length; i++) {
         const assignedDoctor = doctors[i % doctors.length]
 
-        await prisma.appointment.create({
+        const appointment = await prisma.appointment.create({
             data: {
                 patientId: patients[i].patient.id,
                 doctorId: assignedDoctor.doctor.id,
@@ -167,30 +215,15 @@ async function seed(){
                 status: AppointmentStatus.SCHEDULED
             }
         })
-    }
 
-    //Reminders:
-    const myDoctors = doctors.map((d) => d.user_doctor)
-    const myPatients = patients.map((p) => p.user_patient)
-
-    for (const user of [...myDoctors, ...myPatients]){
+        // Appointment reminder (1 hour before)
         await prisma.reminder.create({
             data: {
-                userId: user.id,
+                userId: patients[i].user_patient.id,
                 type: ReminderType.APPOINTMENT,
+                appointmentId: appointment.id,
                 message: "Upcoming appointment reminder",
-                remindAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
-            }
-        })
-    }
-
-    for (const user of [...myPatients]){
-        await prisma.reminder.create({
-            data: {
-                userId: user.id,
-                type: ReminderType.MEDICINE,
-                message: "Time to take your medicine~",
-                remindAt: new Date(Date.now() + 6 * 60 * 60 * 1000)
+                remindAt: new Date(appointment.dateTime.getTime() - 60 * 60 * 1000)
             }
         })
     }
